@@ -1,0 +1,137 @@
+╔════════════════════════════════════════════════════════════════╗
+║       FPGA BITSTREAM MANAGER v2.0 - QUICK REFERENCE           ║
+╚════════════════════════════════════════════════════════════════╝
+
+🆕 WHAT'S NEW IN v2.0
+  ✓ Multiple bitstream files (no auto-delete)
+  ✓ Individual flash button for each file
+  ✓ Real-time loadfpga output display
+  ✓ Currently flashed file highlighting
+  ✓ Enhanced visual status indicators
+
+📦 PACKAGE CONTENTS
+  ├── fpga-manager.cgi        → Main CGI application
+  ├── install.sh              → Automated installation script
+  ├── README.md               → Full documentation
+  └── static/
+      ├── css/                → Bootstrap CSS (offline)
+      └── fonts/              → Bootstrap Icons (offline)
+
+⚡ QUICK INSTALL (3 steps)
+  1. Extract: tar -xzf fpga-manager.tar.gz
+  2. Install: cd fpga-manager && sudo ./install.sh
+  3. Access: http://your-ip/fpga-manager/fpga-manager.cgi
+
+🔧 MANUAL INSTALL
+  1. Create directories:
+     mkdir -p /fpgabit /var/lib
+     
+  2. Copy files to web root:
+     cp -r fpga-manager /var/www/htdocs/
+     chmod +x /var/www/htdocs/fpga-manager/fpga-manager.cgi
+     
+  3. Set permissions:
+     chown -R www-data:www-data /fpgabit
+     chown www-data:www-data /var/lib/fpga_flash_state
+
+📁 FILE LOCATIONS
+  • Bitstreams:    /fpgabit/*.bit (multiple files)
+  • Flash state:   /var/lib/fpga_flash_state
+  • Web files:     /var/www/htdocs/fpga-manager/
+
+🎯 FEATURES
+  ✓ Upload multiple .bit files (keeps all)
+  ✓ Display all files with info (name, size, date)
+  ✓ Individual flash button per file
+  ✓ Delete button per file (with confirmation)
+  ✓ Real-time output from loadfpga command
+  ✓ Visual indicator for currently flashed file
+  ✓ Flash success/failure reporting
+  ✓ 100% offline ready (no CDN dependencies)
+  ✓ Responsive Bootstrap design
+
+⚙️ LIGHTTPD CONFIG
+  Required in lighttpd.conf:
+    cgi.assign = ( ".cgi" => "/bin/sh" )
+  
+  Optional (for large files/long operations):
+    server.max-request-size = 52428800  # 50MB
+    server.max-write-idle = 360         # 6 minutes
+  
+  Then restart:
+    systemctl restart lighttpd
+
+🔄 TYPICAL WORKFLOW
+  1. Upload one or more .bit files
+  2. View all uploaded files in the list
+  3. Click "Flash FPGA" on desired file
+  4. Watch real-time output from loadfpga
+  5. See success/failure status
+  6. Currently flashed file is highlighted
+  7. Return to main page
+
+🔍 TROUBLESHOOTING
+  CSS not loading?
+    → Check static/ folder is in same dir as CGI script
+    
+  Upload fails?
+    → Check /fpgabit is writable by web server user
+    → ls -ld /fpgabit
+    
+  Flash not working?
+    → Verify loadfpga command exists: which loadfpga
+    → Check it's executable by web server user
+    
+  Flash output not showing?
+    → Ensure loadfpga writes to stdout/stderr
+    → Check web server timeout settings
+    
+  Currently flashed not updating?
+    → Check /var/lib/fpga_flash_state is writable
+    → cat /var/lib/fpga_flash_state
+    
+  Permissions errors?
+    → Check web server user (www-data, lighttpd, http)
+    → chown files to correct user
+
+📝 FILE MANAGEMENT
+  Unlike v1.0, v2.0 KEEPS all uploaded files!
+  
+  To remove a file:
+    → Click the red trash icon next to the file
+    → Confirm deletion in the popup dialog
+  
+  Or via command line:
+    rm /fpgabit/unwanted_file.bit
+  
+  To clear all files:
+    rm /fpgabit/*.bit
+
+🌐 DEFAULT PATHS
+  If using standard lighttpd setup:
+  • Web root:  /var/www/htdocs
+  • CGI URL:   http://server/fpga-manager/fpga-manager.cgi
+
+📊 COMPARISON: v1.0 vs v2.0
+  ┌────────────────────┬─────────────┬─────────────┐
+  │ Feature            │ v1.0        │ v2.0        │
+  ├────────────────────┼─────────────┼─────────────┤
+  │ Multiple files     │ ❌ One only │ ✅ Unlimited│
+  │ Auto-delete old    │ ✅ Yes      │ ❌ No       │
+  │ Flash output       │ ❌ Hidden   │ ✅ Visible  │
+  │ Current indicator  │ ❌ Time only│ ✅ Full info│
+  │ Per-file flash     │ ❌ Global   │ ✅ Per-file │
+  └────────────────────┴─────────────┴─────────────┘
+
+💡 USE CASES
+  • Development: Keep multiple versions, switch easily
+  • Testing: Compare different FPGA configurations
+  • Production: Maintain stable + development builds
+  • Debugging: Store known-good alongside test versions
+
+📞 SUPPORT
+  See README.md for detailed documentation and examples.
+
+════════════════════════════════════════════════════════════════
+                      v2.0 - Multi-File Edition
+════════════════════════════════════════════════════════════════

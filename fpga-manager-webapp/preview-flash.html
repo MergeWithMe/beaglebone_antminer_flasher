@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flashing FPGA - Preview</title>
+    <link href="static/css/bootstrap.min.css" rel="stylesheet">
+    <link href="static/css/bootstrap-icons.min.css" rel="stylesheet">
+    <style>
+        @font-face {
+            font-family: 'bootstrap-icons';
+            src: url('static/fonts/bootstrap-icons.woff2') format('woff2'),
+                 url('static/fonts/bootstrap-icons.woff') format('woff');
+        }
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 2rem 0;
+        }
+        .main-card {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            padding: 2rem;
+        }
+        .output-box {
+            background: #1e1e1e;
+            color: #00ff00;
+            padding: 1.5rem;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .success-msg {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .preview-note {
+            background: rgba(255, 193, 7, 0.9);
+            color: #000;
+            padding: 1rem;
+            border-radius: 10px;
+            margin-bottom: 1rem;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-lg-10">
+                <div class="preview-note">
+                    <strong><i class="bi bi-info-circle"></i> Preview Mode</strong> - Example of flash output display
+                </div>
+                
+                <div class="main-card">
+                    <h2 class="mb-4"><i class="bi bi-lightning-charge"></i> Flashing FPGA</h2>
+                    <p><strong>File:</strong> production_v3.2.bit</p>
+                    <p class="mb-3"><strong>Command:</strong> loadfpga /fpgabit/production_v3.2.bit</p>
+                    <h5 class="mt-4 mb-3">Output:</h5>
+                    <div class="output-box">Loading FPGA bitstream...
+Opening file: /fpgabit/production_v3.2.bit
+File size: 3,355,648 bytes
+Verifying bitstream integrity... OK
+Erasing FPGA configuration... Done
+Programming FPGA... 
+  Progress: [========================================] 100%
+Verifying configuration... OK
+FPGA configuration successful!
+Device ID: 0x04A62093
+Configuration time: 2.34 seconds</div>
+                    <div class="alert alert-success mt-3 success-msg">
+                        <i class="bi bi-check-circle"></i> Flash completed successfully!
+                    </div>
+                    <div class="text-center mt-4">
+                        <a href="preview.html" class="btn btn-primary btn-lg">
+                            <i class="bi bi-arrow-left"></i> Back to Manager
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
