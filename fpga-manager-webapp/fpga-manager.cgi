@@ -183,7 +183,7 @@ EOF
                         echo "                    <div class=\"output-box\">"
                         
                         # Execute flash command and capture output
-                        FLASH_OUTPUT=$(loadfpga "$FLASH_FILE" 2>&1)
+                        FLASH_OUTPUT=$(loadfpga "$(basename "$FLASH_FILE")" 2>&1)
                         FLASH_RESULT=$?
                         
                         # Display output
