@@ -7,7 +7,7 @@ echo ""
 
 # Configuration
 FPGA_DIR="/fpgabit"
-STATE_FILE="/var/lib/fpga_flash_state"
+STATE_FILE="/fpgabit/fpga_flash_state"
 
 # Function to get all .bit files
 get_all_files() {
@@ -36,36 +36,79 @@ format_bytes() {
 
 # Parse request method and handle POST
 if [ "$REQUEST_METHOD" = "POST" ]; then
+    echo "Handling POST request" > /fpgabit/upload_log.txt
     # Read content length
     CONTENT_LENGTH=${CONTENT_LENGTH:-0}
+
+    echo "Content Length: $CONTENT_LENGTH" >> /fpgabit/upload_log.txt
+    echo "Content Type: $CONTENT_TYPE" >> /fpgabit/upload_log.txt
     
     # Read POST data
     if [ $CONTENT_LENGTH -gt 0 ]; then
-        POST_DATA=$(dd bs=1 count=$CONTENT_LENGTH 2>/dev/null)
-        
-        # Check if this is a delete request
-        if echo "$POST_DATA" | grep -q "action=delete"; then
-            # Extract filename from POST data
-            DELETE_FILE=$(echo "$POST_DATA" | sed 's/.*filename=\([^&]*\).*/\1/' | sed 's/%2F/\//g' | sed 's/+/ /g')
-            
-            if [ -f "$DELETE_FILE" ]; then
-                rm -f "$DELETE_FILE"
-            fi
-            
-            # Redirect to avoid resubmission
-            echo "Location: $SCRIPT_NAME"
-            echo ""
-            exit 0
-        fi
-        
-        # Check if this is a flash request
-        if echo "$POST_DATA" | grep -q "action=flash"; then
-            # Extract filename from POST data
-            FLASH_FILE=$(echo "$POST_DATA" | sed 's/.*filename=\([^&]*\).*/\1/' | sed 's/%2F/\//g' | sed 's/+/ /g')
-            
-            if [ -f "$FLASH_FILE" ]; then
-                # Display header for flash output
-                cat << 'EOF'
+        # Check if this is a multipart upload or form data
+        case "$CONTENT_TYPE" in
+            *multipart/form-data*)
+                # Handle file upload
+                # Extract boundary
+                BOUNDARY=$(echo "$CONTENT_TYPE" | sed 's/.*boundary=\(.*\)/\1/')
+                echo "received multipart/form-data with boundary: $BOUNDARY" >> /fpgabit/upload_log.txt
+                if [ -n "$BOUNDARY" ]; then
+                    # Create temporary file for upload data
+                    TEMP_FILE="/$FPGA_DIR/upload_$$"
+                    dd bs=$CONTENT_LENGTH count=1 of="$TEMP_FILE" 2>/dev/null
+
+                    # Extract filename from content
+                    FILENAME=$(grep -aoP 'filename="\K[^"]+' "$TEMP_FILE" 2>/dev/null || \
+                              grep -a "filename=" "$TEMP_FILE" | head -n 1 | \
+                              sed 's/.*filename="\([^"]*\)".*/\1/' | \
+                              sed 's/.*\\\([^\\]*\)$/\1/')
+
+                    echo "extracted filename: $FILENAME" >> /fpgabit/upload_log.txt
+
+                    mv "$TEMP_FILE" "$FPGA_DIR/$FILENAME"
+
+                    # Strip multipart headers and boundaries to extract raw file data
+                    # Find the boundary string
+                    BOUNDARY_LINE="--$BOUNDARY"
+                    # Find the start and end of the file data using grep and sed
+                    START=$(grep -n "$BOUNDARY_LINE" "$TEMP_FILE" | head -n 1 | cut -d: -f1)
+                    # Find the header end (empty line after boundary)
+                    HEADER_END=$(tail -n +$((START+1)) "$TEMP_FILE" | grep -n '^$' | head -n 1 | cut -d: -f1)
+                    DATA_START=$((START + HEADER_END))
+                    # Find the next boundary (end of file data)
+                    DATA_END=$(tail -n +$((DATA_START+1)) "$TEMP_FILE" | grep -n "$BOUNDARY_LINE" | head -n 1 | cut -d: -f1)
+                    if [ -n "$DATA_START" ] && [ -n "$DATA_END" ]; then
+                        sed -n "$((DATA_START+1)),$((DATA_START+DATA_END-1))p" "$TEMP_FILE" > "$FPGA_DIR/$FILENAME"
+                        echo "extracted bitstream data to $FPGA_DIR/$FILENAME" >> /fpgabit/upload_log.txt
+                    else
+                        echo "Failed to extract file data from multipart upload" >> /fpgabit/upload_log.txt
+                    fi
+                  
+                    echo "cleaning up temporary file" >> /fpgabit/upload_log.txt
+                fi
+                ;;
+            *)
+                # Regular form POST data
+                POST_DATA=$(dd bs=1 count=$CONTENT_LENGTH 2>/dev/null)
+                
+                # Check if this is a delete request
+                if echo "$POST_DATA" | grep -q "action=delete"; then
+                    # Extract filename from POST data
+                    DELETE_FILE=$(echo "$POST_DATA" | sed 's/.*filename=\([^&]*\).*/\1/' | sed 's/%2F/\//g' | sed 's/+/ /g')
+                    
+                    if [ -f "$DELETE_FILE" ]; then
+                        rm -f "$DELETE_FILE"
+                    fi
+                fi
+                
+                # Check if this is a flash request
+                if echo "$POST_DATA" | grep -q "action=flash"; then
+                    # Extract filename from POST data
+                    FLASH_FILE=$(echo "$POST_DATA" | sed 's/.*filename=\([^&]*\).*/\1/' | sed 's/%2F/\//g' | sed 's/+/ /g')
+                    
+                    if [ -f "$FLASH_FILE" ]; then
+                        # Display header for flash output
+                        cat << 'EOF'
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -133,34 +176,34 @@ if [ "$REQUEST_METHOD" = "POST" ]; then
                 <div class="main-card">
                     <h2 class="mb-4"><i class="bi bi-lightning-charge"></i> Flashing FPGA</h2>
 EOF
-                
-                echo "                    <p><strong>File:</strong> $(basename "$FLASH_FILE")</p>"
-                echo "                    <p class=\"mb-3\"><strong>Command:</strong> loadfpga $FLASH_FILE</p>"
-                echo "                    <h5 class=\"mt-4 mb-3\">Output:</h5>"
-                echo "                    <div class=\"output-box\">"
-                
-                # Execute flash command and capture output
-                FLASH_OUTPUT=$(loadfpga "$FLASH_FILE" 2>&1)
-                FLASH_RESULT=$?
-                
-                # Display output
-                echo "$FLASH_OUTPUT" | sed 's/</\&lt;/g' | sed 's/>/\&gt;/g'
-                
-                echo "                    </div>"
-                
-                if [ $FLASH_RESULT -eq 0 ]; then
-                    echo "                    <div class=\"alert alert-success mt-3 success-msg\">"
-                    echo "                        <i class=\"bi bi-check-circle\"></i> Flash completed successfully!"
-                    echo "                    </div>"
-                    # Save flash state
-                    echo "$(basename "$FLASH_FILE")|$(date '+%Y-%m-%d %H:%M:%S')" > "$STATE_FILE"
-                else
-                    echo "                    <div class=\"alert alert-danger mt-3 error-msg\">"
-                    echo "                        <i class=\"bi bi-x-circle\"></i> Flash failed with exit code: $FLASH_RESULT"
-                    echo "                    </div>"
-                fi
-                
-                cat << 'EOF'
+                        
+                        echo "                    <p><strong>File:</strong> $(basename "$FLASH_FILE")</p>"
+                        echo "                    <p class=\"mb-3\"><strong>Command:</strong> loadfpga $FLASH_FILE</p>"
+                        echo "                    <h5 class=\"mt-4 mb-3\">Output:</h5>"
+                        echo "                    <div class=\"output-box\">"
+                        
+                        # Execute flash command and capture output
+                        FLASH_OUTPUT=$(loadfpga "$FLASH_FILE" 2>&1)
+                        FLASH_RESULT=$?
+                        
+                        # Display output
+                        echo "$FLASH_OUTPUT" | sed 's/</\&lt;/g' | sed 's/>/\&gt;/g'
+                        
+                        echo "                    </div>"
+                        
+                        if [ $FLASH_RESULT -eq 0 ]; then
+                            echo "                    <div class=\"alert alert-success mt-3 success-msg\">"
+                            echo "                        <i class=\"bi bi-check-circle\"></i> Flash completed successfully!"
+                            echo "                    </div>"
+                            # Save flash state
+                            echo "$(basename "$FLASH_FILE")|$(date '+%Y-%m-%d %H:%M:%S')" > "$STATE_FILE"
+                        else
+                            echo "                    <div class=\"alert alert-danger mt-3 error-msg\">"
+                            echo "                        <i class=\"bi bi-x-circle\"></i> Flash failed with exit code: $FLASH_RESULT"
+                            echo "                    </div>"
+                        fi
+                        
+                        cat << 'EOF'
                     <div class="text-center mt-4">
                         <a href="?" class="btn btn-primary btn-lg">
                             <i class="bi bi-arrow-left"></i> Back to Manager
@@ -173,41 +216,11 @@ EOF
 </body>
 </html>
 EOF
-                exit 0
-            fi
-        fi
-        
-        # Handle file upload
-        # Extract boundary
-        BOUNDARY=$(echo "$CONTENT_TYPE" | sed 's/.*boundary=\(.*\)/\1/')
-        
-        if [ -n "$BOUNDARY" ]; then
-            # Create temporary file for upload data
-            TEMP_FILE="/tmp/upload_$$"
-            dd bs=1 count=$CONTENT_LENGTH 2>/dev/null > "$TEMP_FILE"
-            
-            # Extract filename from content
-            FILENAME=$(grep -a "filename=" "$TEMP_FILE" | head -n 1 | sed 's/.*filename="\([^"]*\)".*/\1/' | sed 's/.*\\/\([^\\]*\)$/\1/')
-            
-            # Check if it's a .bit file
-            if echo "$FILENAME" | grep -qi "\.bit$"; then
-                # Extract binary data (skip headers, remove trailing boundary)
-                sed -n '/^'"$(printf '\r')"'$/,/--'"$BOUNDARY"'/p' "$TEMP_FILE" | sed '1d;$d' | head -c -2 > "$FPGA_DIR/$FILENAME"
-                
-                # Alternative approach: use awk to extract binary data
-                awk -v RS='\r\n\r\n' 'NR==2' "$TEMP_FILE" | head -c -$((${#BOUNDARY} + 6)) > "$FPGA_DIR/$FILENAME.tmp"
-                if [ -s "$FPGA_DIR/$FILENAME.tmp" ]; then
-                    mv "$FPGA_DIR/$FILENAME.tmp" "$FPGA_DIR/$FILENAME"
+                        exit 0
+                    fi
                 fi
-            fi
-            
-            rm -f "$TEMP_FILE"
-            
-            # Redirect to avoid resubmission
-            echo "Location: $SCRIPT_NAME"
-            echo ""
-            exit 0
-        fi
+                ;;
+        esac
     fi
 fi
 
@@ -263,6 +276,10 @@ cat << 'EOF'
         .upload-zone:hover {
             border-color: #764ba2;
             background: #f8f9fa;
+        }
+        .upload-zone.uploading {
+            border-color: #28a745;
+            background: #f0fff4;
         }
         .bitstream-card {
             border: 1px solid #dee2e6;
@@ -322,6 +339,25 @@ cat << 'EOF'
             padding: 2rem;
             color: #6c757d;
         }
+        .progress-container {
+            display: none;
+            margin-top: 1rem;
+        }
+        .progress {
+            height: 30px;
+            border-radius: 15px;
+            overflow: hidden;
+        }
+        .progress-bar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.3s ease;
+            font-weight: 600;
+        }
+        .upload-status {
+            text-align: center;
+            margin-top: 0.5rem;
+            font-weight: 500;
+        }
     </style>
 </head>
 <body>
@@ -365,11 +401,17 @@ cat << 'EOF'
                         <div class="mb-4">
                             <h4 class="mb-3"><i class="bi bi-cloud-upload"></i> Upload New Bitstream</h4>
                             <form method="POST" enctype="multipart/form-data" id="uploadForm">
-                                <div class="upload-zone" onclick="document.getElementById('fileInput').click()">
-                                    <i class="bi bi-file-earmark-arrow-up" style="font-size: 3rem; color: #667eea;"></i>
-                                    <p class="mt-3 mb-2 fw-bold">Click to select a .bit file</p>
-                                    <p class="text-muted small">Multiple .bit files can be stored</p>
-                                    <input type="file" id="fileInput" name="bitfile" accept=".bit" style="display: none;" onchange="document.getElementById('uploadForm').submit()">
+                                <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+                                    <i class="bi bi-file-earmark-arrow-up" style="font-size: 3rem; color: #667eea;" id="uploadIcon"></i>
+                                    <p class="mt-3 mb-2 fw-bold" id="uploadText">Click to select a .bit file</p>
+                                    <p class="text-muted small" id="uploadSubtext">Multiple .bit files can be stored</p>
+                                    <input type="file" id="fileInput" name="bitfile" accept=".bit" style="display: none;">
+                                </div>
+                                <div class="progress-container" id="progressContainer">
+                                    <div class="progress">
+                                        <div class="progress-bar" id="progressBar" role="progressbar" style="width: 0%">0%</div>
+                                    </div>
+                                    <div class="upload-status" id="uploadStatus">Uploading...</div>
                                 </div>
                             </form>
                         </div>
@@ -459,6 +501,76 @@ cat << EOF
             </div>
         </div>
     </div>
+    
+    <script>
+        // File upload handling with progress indication
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            if (this.files.length > 0) {
+                const file = this.files[0];
+                const uploadZone = document.getElementById('uploadZone');
+                const uploadIcon = document.getElementById('uploadIcon');
+                const uploadText = document.getElementById('uploadText');
+                const uploadSubtext = document.getElementById('uploadSubtext');
+                const progressContainer = document.getElementById('progressContainer');
+                const progressBar = document.getElementById('progressBar');
+                const uploadStatus = document.getElementById('uploadStatus');
+                const form = document.getElementById('uploadForm');
+                
+                // Show uploading state
+                uploadZone.classList.add('uploading');
+                uploadIcon.className = 'bi bi-hourglass-split';
+                uploadText.textContent = 'Uploading: ' + file.name;
+                uploadSubtext.textContent = 'Please wait, get a coffee! Saving to slow NAND flash.';
+                progressContainer.style.display = 'block';
+                
+                // Create FormData and XMLHttpRequest for upload with progress
+                const formData = new FormData(form);
+                const xhr = new XMLHttpRequest();
+                
+                // Progress event
+                xhr.upload.addEventListener('progress', function(e) {
+                    if (e.lengthComputable) {
+                        const percentComplete = Math.round((e.loaded / e.total) * 100);
+                        progressBar.style.width = percentComplete + '%';
+                        progressBar.textContent = percentComplete + '%';
+                        uploadStatus.textContent = 'Uploading: ' + percentComplete + '%';
+                    }
+                });
+                
+                // Load event (upload complete)
+                xhr.addEventListener('load', function() {
+                    if (xhr.status === 200) {
+                        progressBar.style.width = '100%';
+                        progressBar.textContent = '100%';
+                        uploadStatus.textContent = 'Upload complete! Refreshing...';
+                        uploadStatus.style.color = '#28a745';
+                        
+                        // Redirect after a short delay
+                        setTimeout(function() {
+                            window.location.reload();
+                        }, 1000);
+                    } else {
+                        uploadStatus.textContent = 'Upload failed!';
+                        uploadStatus.style.color = '#dc3545';
+                    }
+                });
+                
+                // Error event
+                xhr.addEventListener('error', function() {
+                    uploadStatus.textContent = 'Upload failed!';
+                    uploadStatus.style.color = '#dc3545';
+                });
+                
+                // Send the request
+                xhr.open('POST', window.location.href, true);
+                xhr.send(formData);
+                
+                // Prevent default form submission
+                e.preventDefault();
+                return false;
+            }
+        });
+    </script>
 </body>
 </html>
 EOF
